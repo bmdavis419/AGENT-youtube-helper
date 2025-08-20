@@ -79,3 +79,6 @@ agents:
     name: comments-watcher
     # The description of the Agent which is editable
     description: Watches the comments and keeps track of info on a given video
+  - id: agent_254213dfa6be7cc94797f08b1b2f6736
+    name: health-demo
+    description: a basic test of the vercel ai sdk with tools to check on my health

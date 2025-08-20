@@ -30,7 +30,10 @@
   "dependencies": {
     "@agentuity/sdk": "^0.0.140",
     "@ai-sdk/openai": "^2.0.16",
-    "ai": "^5.0.17"
+    "ai": "^5.0.17",
+    "googleapis": "^156.0.0",
+    "source-map-js": "^1.2.1",
+    "zod": "^4.0.17"
   },
   "module": "index.ts"
 }
