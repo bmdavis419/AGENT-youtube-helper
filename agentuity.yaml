@@ -82,3 +82,6 @@ agents:
   - id: agent_254213dfa6be7cc94797f08b1b2f6736
     name: health-demo
     description: a basic test of the vercel ai sdk with tools to check on my health
+  - id: agent_8abc35c92dc18ed87d95e2106d945282
+    name: legacy-channel-bot
+    description: the legacy setup for the channel bot. ported over from python
