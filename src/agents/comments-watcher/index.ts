@@ -1,6 +1,8 @@
 import type { AgentContext, AgentRequest, AgentResponse } from "@agentuity/sdk";
+import { openai } from "@ai-sdk/openai";
+import { generateText, stepCountIs, tool } from "ai";
 import { google } from "googleapis";
-import { err, ResultAsync } from "neverthrow";
+import { ResultAsync } from "neverthrow";
 import z from "zod";
 
 const DEFAULT_MAX_RESULTS = 100;
@@ -26,8 +28,8 @@ const inputJsonSchema = z.object({
   videoId: z.string(),
 });
 
-const getVideoInfo = async (data: { videoId: string; ctx: AgentContext }) => {
-  const { videoId, ctx } = data;
+const getVideoInfo = async (data: { videoId: string }) => {
+  const { videoId } = data;
 
   return ResultAsync.fromPromise(
     youtube.videos
@@ -39,10 +41,14 @@ const getVideoInfo = async (data: { videoId: string; ctx: AgentContext }) => {
       .then((r) => {
         const video = r.data.items?.[0];
         if (!video) return null;
-        
+
         const thumbnails = video.snippet?.thumbnails;
-        const thumbnail = thumbnails?.maxres?.url || thumbnails?.high?.url || thumbnails?.medium?.url || thumbnails?.default?.url;
-        
+        const thumbnail =
+          thumbnails?.maxres?.url ||
+          thumbnails?.high?.url ||
+          thumbnails?.medium?.url ||
+          thumbnails?.default?.url;
+
         return {
           title: video.snippet?.title,
           description: video.snippet?.description,
@@ -56,7 +62,7 @@ const getVideoInfo = async (data: { videoId: string; ctx: AgentContext }) => {
         };
       }),
     (e) => {
-      ctx.logger.error(e);
+      console.error(e);
       return new COMMENTS_AGENT_ERROR(
         `Failed to get video info for videoId: ${videoId}`
       );
@@ -67,9 +73,8 @@ const getVideoInfo = async (data: { videoId: string; ctx: AgentContext }) => {
 const getTopComments = async (data: {
   videoId: string;
   maxResults?: number;
-  ctx: AgentContext;
 }) => {
-  const { videoId, maxResults = DEFAULT_MAX_RESULTS, ctx } = data;
+  const { videoId, maxResults = DEFAULT_MAX_RESULTS } = data;
 
   return ResultAsync.fromPromise(
     youtube.commentThreads
@@ -87,22 +92,69 @@ const getTopComments = async (data: {
           likeCount: item.snippet?.topLevelComment?.snippet?.likeCount,
           publishedAt: item.snippet?.topLevelComment?.snippet?.publishedAt,
           replyCount: item.snippet?.totalReplyCount,
-          replies: item.replies?.comments?.map((reply) => ({
-            text: reply.snippet?.textDisplay,
-            authorName: reply.snippet?.authorDisplayName,
-            likeCount: reply.snippet?.likeCount,
-            publishedAt: reply.snippet?.publishedAt,
-          })) || [],
+          replies:
+            item.replies?.comments?.map((reply) => ({
+              text: reply.snippet?.textDisplay,
+              authorName: reply.snippet?.authorDisplayName,
+              likeCount: reply.snippet?.likeCount,
+              publishedAt: reply.snippet?.publishedAt,
+            })) || [],
         }));
       }),
     (e) => {
-      ctx.logger.error(e);
+      console.error(e);
       return new COMMENTS_AGENT_ERROR(
         `Failed to get top comments for videoId: ${videoId}`
       );
     }
   );
 };
+
+// TOOLS
+const getVideoInfoTool = tool({
+  description:
+    "Get all of the information about a video (not including comments)",
+  inputSchema: z.object({
+    videoId: z.string(),
+  }),
+  execute: async ({ videoId }) => {
+    const videoInfo = await getVideoInfo({ videoId });
+    if (videoInfo.isErr()) {
+      return {
+        success: false,
+        error: videoInfo.error,
+        message: `Failed to get video info for videoId: ${videoId}`,
+      };
+    }
+    return {
+      success: true,
+      data: videoInfo.value,
+    };
+  },
+});
+
+const getTopCommentsTool = tool({
+  description:
+    "Get the top comments for a video, does not include full video details. The maxResults parameter is optional and defaults to 100.",
+  inputSchema: z.object({
+    videoId: z.string(),
+    maxResults: z.number().optional(),
+  }),
+  execute: async ({ videoId }) => {
+    const topComments = await getTopComments({ videoId });
+    if (topComments.isErr()) {
+      return {
+        success: false,
+        error: topComments.error,
+        message: `Failed to get top comments for videoId: ${videoId}`,
+      };
+    }
+    return {
+      success: true,
+      data: topComments.value,
+    };
+  },
+});
 
 export default async function Agent(
   req: AgentRequest,
@@ -134,37 +186,40 @@ export default async function Agent(
     });
   }
 
-  const videoInfo = await getVideoInfo({
-    videoId: parseResult.data.videoId,
-    ctx,
-  });
-
-  if (videoInfo.isErr()) {
-    return resp.json({
-      success: false,
-      error: videoInfo.error,
-      message: `Failed to get video info for videoId: ${parseResult.data.videoId}`,
-    });
-  }
-
-  console.log(videoInfo.value);
-
-  const topComments = await getTopComments({
-    videoId: parseResult.data.videoId,
-    ctx,
-  });
-
-  if (topComments.isErr()) {
-    return resp.json({
-      success: false,
-      error: topComments.error,
-      message: `Failed to get top comments for videoId: ${parseResult.data.videoId}`,
-    });
-  }
-
-  console.log(topComments.value);
-
-  return resp.text(
-    `Hello from Agentuity! Your videoId is ${parseResult.data.videoId}`
+  const result = await ResultAsync.fromPromise(
+    generateText({
+      model: openai("gpt-5-mini"),
+      providerOptions: {
+        openai: {
+          reasoningEffort: "low",
+        },
+      },
+      system:
+        "You are an internal background agent who's job is to keep an eye on youtube videos. You have access to tools that can get the top comments for a video and the full video info.",
+      tools: {
+        getVideoInfo: getVideoInfoTool,
+        getTopComments: getTopCommentsTool,
+      },
+      messages: [
+        {
+          role: "user",
+          content: `Check the sentiment in the comments for this video: ${parseResult.data.videoId}. Give a full report on the video and how it's doing.`,
+        },
+      ],
+      stopWhen: stepCountIs(10),
+    }),
+    (e) => {
+      return new COMMENTS_AGENT_ERROR(`Failed to generate text`);
+    }
   );
+
+  if (result.isErr()) {
+    return resp.json({
+      success: false,
+      error: result.error,
+      message: `Failed to generate text`,
+    });
+  }
+
+  return resp.json(result.value.text);
 }
