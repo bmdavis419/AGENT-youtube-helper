@@ -37,7 +37,23 @@ const getVideoInfo = async (data: { videoId: string; ctx: AgentContext }) => {
         maxResults: 1,
       })
       .then((r) => {
-        return r.data.items?.[0] ?? null;
+        const video = r.data.items?.[0];
+        if (!video) return null;
+        
+        const thumbnails = video.snippet?.thumbnails;
+        const thumbnail = thumbnails?.maxres?.url || thumbnails?.high?.url || thumbnails?.medium?.url || thumbnails?.default?.url;
+        
+        return {
+          title: video.snippet?.title,
+          description: video.snippet?.description,
+          channelTitle: video.snippet?.channelTitle,
+          publishedAt: video.snippet?.publishedAt,
+          duration: video.contentDetails?.duration,
+          viewCount: video.statistics?.viewCount,
+          likeCount: video.statistics?.likeCount,
+          commentCount: video.statistics?.commentCount,
+          thumbnail,
+        };
       }),
     (e) => {
       ctx.logger.error(e);
@@ -65,7 +81,19 @@ const getTopComments = async (data: {
         textFormat: "plainText",
       })
       .then((r) => {
-        return r.data.items ?? [];
+        return (r.data.items ?? []).map((item) => ({
+          text: item.snippet?.topLevelComment?.snippet?.textDisplay,
+          authorName: item.snippet?.topLevelComment?.snippet?.authorDisplayName,
+          likeCount: item.snippet?.topLevelComment?.snippet?.likeCount,
+          publishedAt: item.snippet?.topLevelComment?.snippet?.publishedAt,
+          replyCount: item.snippet?.totalReplyCount,
+          replies: item.replies?.comments?.map((reply) => ({
+            text: reply.snippet?.textDisplay,
+            authorName: reply.snippet?.authorDisplayName,
+            likeCount: reply.snippet?.likeCount,
+            publishedAt: reply.snippet?.publishedAt,
+          })) || [],
+        }));
       }),
     (e) => {
       ctx.logger.error(e);
