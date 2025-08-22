@@ -312,10 +312,10 @@ export default async function Agent(
 
   const result = await ResultAsync.fromPromise(
     generateText({
-      model: openai("gpt-5"),
+      model: openai("gpt-5-mini"),
       providerOptions: {
         openai: {
-          reasoningEffort: "low",
+          reasoningEffort: "high",
         },
       },
       system: SYSTEM_PROMPT,
