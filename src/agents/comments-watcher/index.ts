@@ -238,7 +238,7 @@ You are an internal background agent who's job is to monitor youtube videos, the
 
 You have access to tools that can get the top comments for a video and the full video info. You also have access to tools for saving and writing to a kv store (your memory).
 
-You will be given a videoId and then you will need to create a snapshot summary of a video. (you should keep track of when the snapshot was taken as well)
+You will be given a videoId and then you will need to create a snapshot summary of a video. (you should keep track of when the snapshot was taken as well, this is running at ${new Date().toISOString()})
 
 Make sure you check for any existing memory for this videoId. If there is, you should use that as a starting point. Remember the memory is being saved to a kv store, so whatever you save will overwrite the previous memory (make sure not to loose any important information).
 
@@ -248,6 +248,8 @@ Things that should be included:
 
 - Title
 - Description
+- Video URL (https://www.youtube.com/watch?v=VIDEO_ID)
+- Video ID
 - Channel Title
 - Published At
 - Duration
@@ -315,7 +317,7 @@ export default async function Agent(
       model: openai("gpt-5-mini"),
       providerOptions: {
         openai: {
-          reasoningEffort: "high",
+          reasoningEffort: "low",
         },
       },
       system: SYSTEM_PROMPT,
